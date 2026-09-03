@@ -5,7 +5,7 @@ Facilitar a preparação de candidatos que possuem dificuldades para organizar s
 
 A proposta é utilizar a Inteligência Artificial como uma ferramenta de apoio, transformando informações fornecidas pelo usuário em conteúdos profissionais e oferecendo uma experiência de treinamento personalizada de acordo com o cargo desejado.
 
-🚀 MVP
+MVP
 
 O Produto Mínimo Viável contempla:
 	•	Entrada de informações por texto;
