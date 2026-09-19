@@ -1,4 +1,4 @@
-# assitente-carreira-ia
+# Sistema de Inteligência Artificial para Currículos e Entrevistas
 Assistente que gera currículo de acordo com as informações passada pelo o usuário.
 
 Facilitar a preparação de candidatos que possuem dificuldades para organizar suas experiências profissionais, elaborar um currículo ou se preparar para uma entrevista.
