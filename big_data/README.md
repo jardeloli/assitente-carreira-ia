@@ -2,7 +2,7 @@
 
 ## TED 01 – Definição do Problema de Dados e Seleção do Conjunto de Dados
 
-### 👥 Integrantes da equipe
+### Integrantes da equipe
 
 * Jardel Oliveira
 * Gustavo Noleto
@@ -11,7 +11,7 @@
 
 ---
 
-## 📌 Sobre o projeto
+## Sobre o projeto
 
 O projeto propõe o desenvolvimento de um **Sistema de Inteligência Artificial para Currículos e Entrevistas**, voltado para pessoas que estão em busca de emprego ou de novas oportunidades profissionais.
 
@@ -23,7 +23,7 @@ O sistema tem como objetivo **auxiliar o candidato**, não substituir processos 
 
 ---
 
-## ❗ Problema
+## Problema
 
 Muitas pessoas possuem experiências profissionais, conhecimentos e habilidades relevantes, mas encontram dificuldades para apresentar essas informações de maneira clara, organizada e profissional em um currículo.
 
@@ -35,7 +35,7 @@ Dessa forma, o projeto busca investigar como uma solução baseada em Inteligên
 
 ---
 
-## 🎯 Objetivo do MVP
+## Objetivo do MVP
 
 O MVP (Produto Mínimo Viável) consiste em um sistema capaz de:
 
@@ -51,7 +51,7 @@ O MVP (Produto Mínimo Viável) consiste em um sistema capaz de:
 
 ---
 
-# 📊 Conjuntos de dados utilizados
+# Conjuntos de dados utilizados
 
 Para atender às necessidades de dados do projeto, foram selecionadas duas fontes complementares:
 
