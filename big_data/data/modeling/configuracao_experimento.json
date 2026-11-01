@@ -1,0 +1,15 @@
+{
+    "fonte": "ESCO",
+    "entrada": [
+        "preferredLabel",
+        "altLabels",
+        "description"
+    ],
+    "alvo": "relationType=essencial e skillType=competência",
+    "abordagem": "Classificação multirrótulo",
+    "vetorizacao": "TF-IDF (unigramas e bigramas)",
+    "algoritmo": "One-vs-Rest com Regressão Logística",
+    "divisao_treino_teste": "80/20",
+    "random_state": 42,
+    "rotulos_modelo_final": 100
+}
