@@ -1,4 +1,5 @@
 import asyncio
+import logging
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, ContextTypes, filters
 from app.config import TELEGRAM_BOT_TOKEN
@@ -105,8 +106,23 @@ async def finalizar_documento(update: Update, chat_id: int, dados: dict):
 
 
 async def mensagem(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    chat_id = update.effective_chat.id; texto = (update.message.text or '').strip()
-    sessao = obter(chat_id); estado = sessao['estado']; dados = sessao['dados']
+    if not update.effective_chat or not update.effective_message:
+        return
+
+    chat_id = update.effective_chat.id
+    mensagem_atual = update.effective_message
+
+    if not mensagem_atual.text:
+        await mensagem_atual.reply_text(
+            "Por enquanto, consigo processar apenas mensagens de texto. "
+            "O envio de imagens, documentos e áudios ainda não está disponível."
+        )
+        return
+
+    texto = mensagem_atual.text.strip()
+    sessao = obter(chat_id); estado = sessao['estado']; 
+    dados = sessao['dados']
+    
     if estado == 'menu':
         intencao = inferir_intencao(texto)
         if not intencao:
@@ -233,6 +249,19 @@ async def mensagem(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def post_init(app: Application):
     print('Bot de carreira iniciado. Pressione Ctrl+C para encerrar.')
 
+
+logger = logging.getLogger(__name__)
+
+
+async def tratar_erro(
+    update: object,
+    context: ContextTypes.DEFAULT_TYPE
+):
+    logger.error(
+        "Erro ao processar atualização do Telegram",
+        exc_info=context.error
+    )
+
 def main():
     if not TELEGRAM_BOT_TOKEN:
         raise SystemExit(
@@ -255,6 +284,8 @@ def main():
     app.add_handler(
         MessageHandler(filters.TEXT & ~filters.COMMAND, mensagem)
     )
+
+    app.add_error_handler(tratar_erro)
 
     # Compatibilidade com versões recentes do Python
     loop = asyncio.new_event_loop()
