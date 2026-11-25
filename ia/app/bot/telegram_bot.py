@@ -2,22 +2,48 @@ import asyncio
 import logging
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, ContextTypes, filters
-from app.config import TELEGRAM_BOT_TOKEN
+from app.config import TELEGRAM_BOT_TOKEN, AUDIO_MAX_SEGUNDOS, AUDIO_MAX_BYTES
 from app.services.armazenamento import obter, salvar, limpar
 from app.services.agente import gerar_curriculo, gerar_carta, gerar_pergunta, avaliar_resposta, resumo_entrevista
+from app.services.audio import transcrever_audio, normalizar_mime, FormatoNaoSuportado
 from app.services.documentos import arquivo_pdf
 
-MENU = InlineKeyboardMarkup([[InlineKeyboardButton('📄 Gerar currículo', callback_data='curriculo')], [InlineKeyboardButton('✉️ Carta de apresentação', callback_data='carta')], [InlineKeyboardButton('🎤 Simular entrevista', callback_data='entrevista')], [InlineKeyboardButton('❓ Ajuda', callback_data='ajuda')]])
+logger = logging.getLogger(__name__)
+
+# Dados pessoais vão direto para o documento: quando chegam por áudio,
+# a transcrição é confirmada com a pessoa antes de seguir.
+CAMPOS_PESSOAIS = {'coletar_nome', 'coletar_telefone', 'coletar_email'}
+PERGUNTAS_CAMPOS = {
+    'coletar_nome': 'Qual é o seu nome completo?',
+    'coletar_telefone': 'Qual é o seu telefone com DDD?',
+    'coletar_email': 'Qual é o seu e-mail? Se não quiser informar, responda "Não".',
+}
+CONFIRMACOES = {'sim', 's', 'isso', 'isso mesmo', 'correto', 'certo', 'está correto', 'esta correto', 'ok', 'confirmo'}
+NEGACOES = {'não', 'nao', 'n', 'errado', 'incorreto', 'está errado', 'esta errado', 'não está correto', 'nao esta correto'}
+LIMITE_ECO = 800
+
+
+def _limite_audio() -> str:
+    minutos, segundos = divmod(AUDIO_MAX_SEGUNDOS, 60)
+    if minutos and not segundos:
+        return f'{minutos} minuto' + ('s' if minutos > 1 else '')
+    return f'{AUDIO_MAX_SEGUNDOS} segundos'
+
+
+def _normalizar_resposta(texto: str) -> str:
+    return texto.lower().strip().strip('.!,;').strip()
+
+MENU =InlineKeyboardMarkup([[InlineKeyboardButton('📄 Gerar currículo', callback_data='curriculo')], [InlineKeyboardButton('✉️ Carta de apresentação', callback_data='carta')], [InlineKeyboardButton('🎤 Simular entrevista', callback_data='entrevista')], [InlineKeyboardButton('❓ Ajuda', callback_data='ajuda')]])
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     limpar(update.effective_chat.id)
-    await update.message.reply_text('Olá! Sou seu Agente de Carreira. Você não precisa criar perfil nem fazer cadastro. Escolha uma opção ou escreva diretamente o que deseja fazer.', reply_markup=MENU)
+    await update.message.reply_text('Olá! Sou seu Agente de Carreira. Você não precisa criar perfil nem fazer cadastro. Escolha uma opção, escreva ou mande um áudio dizendo o que deseja fazer.', reply_markup=MENU)
 
 async def menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.effective_message.reply_text('O que você gostaria de fazer?', reply_markup=MENU)
 
 async def ajuda(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.effective_message.reply_text('Use os botões ou escreva em linguagem natural. Comandos: /start, /menu, /ajuda e /cancelar. No momento, o bot aceita texto; voz poderá ser adicionada depois.')
+    await update.effective_message.reply_text(f'Use os botões, escreva ou envie áudios (de até {_limite_audio()}) em linguagem natural. Comandos: /start, /menu, /ajuda e /cancelar.')
 
 async def cancelar(update: Update, context: ContextTypes.DEFAULT_TYPE):
     limpar(update.effective_chat.id)
@@ -27,8 +53,8 @@ async def escolher(update: Update, context: ContextTypes.DEFAULT_TYPE):
     q = update.callback_query; await q.answer()
     escolha = q.data
     if escolha == 'ajuda':
-        await q.message.reply_text('Você pode gerar currículo, carta ou praticar entrevista. Não precisa criar perfil. Envie suas informações em texto livre.'); return
-    prompts = {'curriculo':'Vamos montar seu currículo. Informe o cargo desejado e conte, do seu jeito, sobre sua experiência, formação, cursos e habilidades. Se for seu primeiro emprego, diga isso e conte sobre estudos ou atividades relevantes.', 'carta':'Vamos preparar sua carta. Informe o cargo, a empresa (para qual irá encaminhar a carta) e conte um pouco sobre sua experiência, formação e interesse pela vaga.', 'entrevista':'Qual cargo você quer praticar para a entrevista? Se quiser, conte também um pouco sobre sua experiência.'}
+        await q.message.reply_text('Você pode gerar currículo, carta ou praticar entrevista. Não precisa criar perfil. Envie suas informações por texto ou áudio.'); return
+    prompts = {'curriculo':'Vamos montar seu currículo. Informe o cargo desejado e conte, do seu jeito, sobre sua experiência, formação, cursos e habilidades. Se for seu primeiro emprego, diga isso e conte sobre estudos ou atividades relevantes. Pode escrever ou mandar um áudio.', 'carta':'Vamos preparar sua carta. Informe o cargo, a empresa (para qual irá encaminhar a carta) e conte um pouco sobre sua experiência, formação e interesse pela vaga. Pode escrever ou mandar um áudio.','entrevista':'Qual cargo você quer praticar para a entrevista? Se quiser, conte também um pouco sobre sua experiência.'}
     salvar(q.message.chat_id, escolha + ('_cargo' if escolha == 'entrevista' else '_dados'), {})
     await q.message.reply_text(prompts[escolha])
 
@@ -105,24 +131,122 @@ async def finalizar_documento(update: Update, chat_id: int, dados: dict):
         limpar(chat_id)
 
 
+async def transcrever_mensagem(mensagem_atual, estado: str):
+    """Baixa e transcreve um áudio do Telegram. Devolve None se não for possível."""
+    midia = mensagem_atual.voice or mensagem_atual.audio
+
+    if midia.duration and midia.duration > AUDIO_MAX_SEGUNDOS:
+        await mensagem_atual.reply_text(
+            f'O áudio é muito longo. Envie áudios de até {_limite_audio()} '
+            'ou divida a mensagem em partes.'
+        )
+        return None
+
+    if midia.file_size and midia.file_size > AUDIO_MAX_BYTES:
+        await mensagem_atual.reply_text(
+            'O arquivo de áudio é grande demais (limite de 20 MB). '
+            'Envie um áudio menor ou escreva a mensagem.'
+        )
+        return None
+
+    try:
+        normalizar_mime(midia.mime_type)
+    except FormatoNaoSuportado:
+        await mensagem_atual.reply_text(
+            'Não consigo ler esse formato de áudio. Grave uma mensagem de voz '
+            'pelo próprio Telegram ou envie em MP3, OGG, WAV, AAC ou FLAC.'
+        )
+        return None
+
+    await mensagem_atual.reply_text('🎧 Ouvindo seu áudio…')
+
+    try:
+        arquivo = await midia.get_file()
+        conteudo = await arquivo.download_as_bytearray()
+        texto = await asyncio.to_thread(
+            transcrever_audio, bytes(conteudo), midia.mime_type, estado
+        )
+    except Exception:
+        logger.exception('Erro ao transcrever áudio')
+        await mensagem_atual.reply_text(
+            'Não consegui processar o áudio agora. '
+            'Tente novamente ou envie a mensagem por texto.'
+        )
+        return None
+
+    if not texto:
+        await mensagem_atual.reply_text(
+            'Não consegui entender o que foi dito. '
+            'Pode repetir o áudio em um lugar mais silencioso ou escrever?'
+        )
+        return None
+
+    return texto
+
+
 async def mensagem(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.effective_chat or not update.effective_message:
         return
 
     chat_id = update.effective_chat.id
     mensagem_atual = update.effective_message
+    sessao = obter(chat_id); estado = sessao['estado']
+    dados = sessao['dados']
+    via_audio = bool(mensagem_atual.voice or mensagem_atual.audio)
 
-    if not mensagem_atual.text:
+    if via_audio:
+        # Durante uma confirmação, a dica de transcrição é a do campo pendente.
+        estado_destino = (
+            dados.get('pendente_audio', {}).get('estado', estado)
+            if estado == 'confirmar_audio' else estado
+        )
+        texto = await transcrever_mensagem(mensagem_atual, estado_destino)
+        if texto is None:
+            return
+    elif mensagem_atual.text:
+        texto = mensagem_atual.text.strip()
+    else:
         await mensagem_atual.reply_text(
-            "Por enquanto, consigo processar apenas mensagens de texto. "
-            "O envio de imagens, documentos e áudios ainda não está disponível."
+            "Por enquanto, consigo processar mensagens de texto e de áudio. "
+            "O envio de imagens, vídeos e documentos ainda não está disponível."
         )
         return
 
-    texto = mensagem_atual.text.strip()
-    sessao = obter(chat_id); estado = sessao['estado']; 
-    dados = sessao['dados']
-    
+    confirmado = False
+    if estado == 'confirmar_audio':
+        pendente = dados.pop('pendente_audio', None) or {}
+        estado = pendente.get('estado', 'menu')
+        resposta = _normalizar_resposta(texto)
+
+        if resposta in CONFIRMACOES:
+            texto = pendente.get('texto', '')
+            confirmado = True
+        elif resposta in NEGACOES:
+            salvar(chat_id, estado, dados)
+            await mensagem_atual.reply_text(
+                'Tudo bem, vamos de novo. '
+                + PERGUNTAS_CAMPOS.get(estado, 'O que deseja fazer?')
+                + '\n\nSe preferir, digite a resposta.'
+            )
+            return
+
+        # Qualquer outra resposta é tratada como o valor corrigido do campo.
+        salvar(chat_id, estado, dados)
+
+    if via_audio and not confirmado:
+        if estado in CAMPOS_PESSOAIS:
+            dados['pendente_audio'] = {'estado': estado, 'texto': texto}
+            salvar(chat_id, 'confirmar_audio', dados)
+            await mensagem_atual.reply_text(
+                f'🎧 Entendi: {texto}\n\n'
+                'Está correto? Responda "Sim" para confirmar '
+                'ou envie o dado correto (por texto ou áudio).'
+            )
+            return
+
+        eco = texto if len(texto) <= LIMITE_ECO else texto[:LIMITE_ECO].rstrip() + '…'
+        await mensagem_atual.reply_text(f'🎧 Entendi: {eco}')
+
     if estado == 'menu':
         intencao = inferir_intencao(texto)
         if not intencao:
@@ -193,7 +317,8 @@ async def mensagem(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     if estado == 'coletar_email':
-        resposta = texto.strip()
+        # Transcrições costumam terminar a frase com ponto final.
+        resposta = texto.strip().rstrip('.!')
         opcional_nao_informado = {
             'não', 'nao', 'pular', 'não tenho', 'nao tenho',
             'prefiro não informar', 'prefiro nao informar',
@@ -250,9 +375,6 @@ async def post_init(app: Application):
     print('Bot de carreira iniciado. Pressione Ctrl+C para encerrar.')
 
 
-logger = logging.getLogger(__name__)
-
-
 async def tratar_erro(
     update: object,
     context: ContextTypes.DEFAULT_TYPE
@@ -281,8 +403,15 @@ def main():
     app.add_handler(CommandHandler('cancelar', cancelar))
 
     app.add_handler(CallbackQueryHandler(escolher))
+    # Recebe texto, voz, áudio e também outros anexos (para avisar que não são
+    # suportados). Só mensagens novas: edições não reiniciam etapas do fluxo.
     app.add_handler(
-        MessageHandler(filters.TEXT & ~filters.COMMAND, mensagem)
+        MessageHandler(
+            filters.UpdateType.MESSAGE
+            & ~filters.COMMAND
+            & ~filters.StatusUpdate.ALL,
+            mensagem,
+        )
     )
 
     app.add_error_handler(tratar_erro)
