@@ -9,6 +9,7 @@ Nesta versão do MVP (*Minimum Viable Product*), a interação acontece pelo **T
 ## Funcionalidades
 
 - **Chat pelo Telegram:** interação por comandos, botões e mensagens de texto em linguagem natural.
+- **Mensagens de áudio:** mensagens de voz e arquivos de áudio são transcritos pelo Gemini e seguem o mesmo fluxo das mensagens escritas.
 - **Geração de currículos:** organização de experiências profissionais, escolaridade, cursos e competências com auxílio do Gemini.
 - **Carta de apresentação:** criação de textos de apresentação profissional conforme as informações fornecidas pelo usuário.
 - **Entrevista simulada:** simulação com oito perguntas, feedback após cada resposta e resumo de desempenho ao final.
@@ -155,6 +156,12 @@ GEMINI_API_KEY=sua_chave_api_gemini
 TELEGRAM_BOT_TOKEN=seu_token_telegram
 ```
 
+Opcionalmente, ajuste a duração máxima dos áudios aceitos (padrão de 300 segundos):
+
+```env
+AUDIO_MAX_SEGUNDOS=300
+```
+
 **Como obter as credenciais:**
 
 - **Token do Telegram:** converse com o [@BotFather](https://t.me/BotFather), crie um bot com o comando `/newbot` e copie o token fornecido.
@@ -223,6 +230,13 @@ Quero fazer uma entrevista simulada para uma vaga de auxiliar administrativo.
 
 O agente iniciará o fluxo de entrevista, apresentando as perguntas e fornecendo feedback sobre as respostas.
 
+**Mensagens de áudio:**
+
+Em qualquer etapa, o usuário pode gravar uma mensagem de voz em vez de escrever. O bot transcreve o áudio, mostra o que entendeu e continua a conversa normalmente.
+
+- Para **nome, telefone e e-mail**, o bot pede confirmação da transcrição antes de seguir, já que esses dados vão direto para o documento. Basta responder "Sim" ou enviar o dado correto.
+- São aceitos áudios de até 5 minutos (configurável por `AUDIO_MAX_SEGUNDOS`) e 20 MB, nos formatos OGG (voz do Telegram), MP3, WAV, AAC, FLAC e AIFF.
+
 ### 4. Encerrar a execução
 
 Para encerrar o bot, volte ao terminal em que ele está sendo executado e pressione:
@@ -273,8 +287,9 @@ O Pytest executará os testes automatizados disponíveis no diretório `tests`.
 
 - **Sem cadastro de usuários:** não existe criação de conta ou perfil profissional permanente. O ID do chat do Telegram é utilizado para separar os estados das conversas.
 - **Interface:** nesta etapa, o Telegram é utilizado para validar a experiência conversacional. Não foram desenvolvidas telas próprias para web ou mobile.
-- **Comunicação textual:** o MVP trabalha com mensagens de texto. A funcionalidade de envio e processamento de áudio ainda não foi implementada.
-- **Documentos:** nesta versão, os currículos e as cartas são entregues em formato `.txt`. A geração em PDF ou DOCX poderá ser incorporada em etapas futuras.
+- **Comunicação:** o MVP aceita mensagens de texto e de áudio. Imagens, vídeos e documentos enviados pelo usuário ainda não são processados.
+- **Transcrição de áudio:** a qualidade depende da clareza da gravação. A transcrição é feita pelo Gemini, portanto o áudio é enviado à API do Google, assim como já acontece com os textos.
+- **Documentos:** nesta versão, os currículos e as cartas são entregues em formato PDF. A geração em DOCX poderá ser incorporada em etapas futuras.
 - **Recuperação CBO/ESCO:** a recuperação é lexical e inicial, não sendo um sistema vetorial completo.
 - **Integrações externas:** o funcionamento real do Gemini e do Telegram depende de credenciais válidas e conexão com a internet.
 - **Validação das informações:** o usuário deve revisar todo conteúdo gerado antes de utilizá-lo profissionalmente. A inteligência artificial não deve inventar experiências, qualificações ou dados pessoais.

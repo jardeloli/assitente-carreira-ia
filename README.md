@@ -8,13 +8,13 @@ A proposta é utilizar a Inteligência Artificial como uma ferramenta de apoio, 
 MVP
 
 O Produto Mínimo Viável contempla:
-	•	Entrada de informações por texto;
+	•	Entrada de informações por texto ou áudio;
 	•	Organização das informações profissionais pela IA;
 	•	Geração de currículo;
 	•	Geração de carta de recomendação;
 	•	Definição do cargo desejado;
 	•	Simulação de entrevista baseada no cargo;
-	•	Respostas da entrevista por texto;
+	•	Respostas da entrevista por texto ou áudio;
 	•	Feedback da IA sobre as respostas do candidato.
 
 Público-alvo
